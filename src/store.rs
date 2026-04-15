@@ -18,6 +18,24 @@ impl Store {
         self.cache.insert(key, value);
     }
 
+    pub fn put_if_absent(&mut self, key: String, value: Value) -> (bool, Value) {
+        if let Some(existing) = self.cache.get(&key).cloned() {
+            (false, existing)
+        } else {
+            self.cache.insert(key, value.clone());
+            (true, value)
+        }
+    }
+
+    pub fn get_or_put(&mut self, key: String, value: Value) -> Value {
+        if let Some(existing) = self.cache.get(&key).cloned() {
+            existing
+        } else {
+            self.cache.insert(key, value.clone());
+            value
+        }
+    }
+
     pub fn get(&mut self, key: &str) -> Option<Value> {
         self.cache.get(key).cloned()
     }
@@ -48,6 +66,17 @@ impl Store {
 
         Value::record(record, span)
     }
+
+    pub fn incr(&mut self, key: String, delta: i64, span: Span) -> Result<i64, &'static str> {
+        let next = match self.cache.get(&key) {
+            Some(Value::Int { val, .. }) => val.saturating_add(delta),
+            Some(_) => return Err("Value is not an integer"),
+            None => delta,
+        };
+
+        self.cache.insert(key, Value::int(next, span));
+        Ok(next)
+    }
 }
 
 #[cfg(test)]
@@ -65,5 +94,46 @@ mod tests {
         assert_eq!(store.get("k"), Some(value.clone()));
         assert_eq!(store.take("k"), Some(value));
         assert_eq!(store.get("k"), None);
+    }
+
+    #[test]
+    fn put_if_absent_reports_existing_value() {
+        let span = Span::test_data();
+        let mut store = Store::new(16);
+        let first = Value::string("first", span);
+        let second = Value::string("second", span);
+
+        assert_eq!(store.put_if_absent("k".into(), first.clone()), (true, first.clone()));
+        assert_eq!(store.put_if_absent("k".into(), second), (false, first));
+    }
+
+    #[test]
+    fn get_or_put_returns_existing_value() {
+        let span = Span::test_data();
+        let mut store = Store::new(16);
+        let first = Value::string("first", span);
+        let second = Value::string("second", span);
+
+        assert_eq!(store.get_or_put("k".into(), first.clone()), first.clone());
+        assert_eq!(store.get_or_put("k".into(), second), first);
+    }
+
+    #[test]
+    fn incr_initializes_and_increments_integer_values() {
+        let span = Span::test_data();
+        let mut store = Store::new(16);
+
+        assert_eq!(store.incr("k".into(), 2, span), Ok(2));
+        assert_eq!(store.incr("k".into(), 3, span), Ok(5));
+    }
+
+    #[test]
+    fn incr_rejects_non_integer_values() {
+        let span = Span::test_data();
+        let mut store = Store::new(16);
+
+        store.put("k".into(), Value::string("nope", span));
+
+        assert_eq!(store.incr("k".into(), 1, span), Err("Value is not an integer"));
     }
 }

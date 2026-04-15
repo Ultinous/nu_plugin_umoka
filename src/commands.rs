@@ -10,11 +10,14 @@ use crate::UMokaPlugin;
 
 pub struct UMoka;
 pub struct Put;
+pub struct PutIfAbsent;
 pub struct Get;
+pub struct GetOrPut;
 pub struct Take;
 pub struct Delete;
 pub struct Has;
 pub struct Clear;
+pub struct Incr;
 pub struct Stats;
 
 impl PluginCommand for UMoka {
@@ -45,7 +48,7 @@ impl PluginCommand for UMoka {
     ) -> Result<PipelineData, LabeledError> {
         keep_alive(engine)?;
         Err(LabeledError::new("Subcommand required")
-            .with_help("Use a subcommand such as `put`, `get`, `take`, or `delete`.")
+            .with_help("Use a subcommand such as `put`, `put-if-absent`, `get`, or `take`.")
             .with_label("subcommand missing here", call.head))
     }
 }
@@ -100,20 +103,7 @@ impl SimplePluginCommand for Put {
         keep_alive(engine)?;
         let key: String = call.req(0)?;
 
-        let value = match (is_nothing(input), call.opt::<Value>(1)?) {
-            (false, None) => input.clone(),
-            (true, Some(value)) => value,
-            (true, None) => {
-                return Err(LabeledError::new("Missing value")
-                    .with_help("Pass a value as pipeline input or as the second positional argument.")
-                    .with_label("value required here", call.head))
-            }
-            (false, Some(_)) => {
-                return Err(LabeledError::new("Ambiguous value input")
-                    .with_help("Use either pipeline input or a positional value, not both.")
-                    .with_label("conflicting inputs", call.head))
-            }
-        };
+        let value = resolve_value_input(call, input)?;
 
         let mut store = plugin
             .store()
@@ -121,6 +111,52 @@ impl SimplePluginCommand for Put {
             .map_err(|_| poison_error(call.head))?;
         store.put(key, value.clone());
         Ok(value)
+    }
+}
+
+impl SimplePluginCommand for PutIfAbsent {
+    type Plugin = UMokaPlugin;
+
+    fn name(&self) -> &str {
+        "umoka put-if-absent"
+    }
+
+    fn description(&self) -> &str {
+        "Store a value only if the key is missing."
+    }
+
+    fn signature(&self) -> Signature {
+        Signature::build(SimplePluginCommand::name(self))
+            .required("key", SyntaxShape::String, "The cache key.")
+            .optional("value", SyntaxShape::Any, "Value to store if missing.")
+            .input_output_types(vec![(Type::Any, Type::Record(vec![].into())), (Type::Nothing, Type::Record(vec![].into()))])
+            .category(Category::Experimental)
+    }
+
+    fn run(
+        &self,
+        plugin: &UMokaPlugin,
+        engine: &EngineInterface,
+        call: &EvaluatedCall,
+        input: &Value,
+    ) -> Result<Value, LabeledError> {
+        keep_alive(engine)?;
+        let key: String = call.req(0)?;
+        let value = resolve_value_input(call, input)?;
+
+        let mut store = plugin
+            .store()
+            .lock()
+            .map_err(|_| poison_error(call.head))?;
+        let (inserted, stored_value) = store.put_if_absent(key, value);
+
+        Ok(Value::record(
+            Record::from_iter([
+                ("inserted", Value::bool(inserted, call.head)),
+                ("value", stored_value),
+            ]),
+            call.head,
+        ))
     }
 }
 
@@ -156,6 +192,44 @@ impl SimplePluginCommand for Get {
             .lock()
             .map_err(|_| poison_error(call.head))?;
         Ok(store.get(&key).unwrap_or_else(|| Value::nothing(call.head)))
+    }
+}
+
+impl SimplePluginCommand for GetOrPut {
+    type Plugin = UMokaPlugin;
+
+    fn name(&self) -> &str {
+        "umoka get-or-put"
+    }
+
+    fn description(&self) -> &str {
+        "Return the existing value for a key, or store and return a fallback."
+    }
+
+    fn signature(&self) -> Signature {
+        Signature::build(SimplePluginCommand::name(self))
+            .required("key", SyntaxShape::String, "The cache key.")
+            .optional("value", SyntaxShape::Any, "Value to store if missing.")
+            .input_output_types(vec![(Type::Any, Type::Any), (Type::Nothing, Type::Any)])
+            .category(Category::Experimental)
+    }
+
+    fn run(
+        &self,
+        plugin: &UMokaPlugin,
+        engine: &EngineInterface,
+        call: &EvaluatedCall,
+        input: &Value,
+    ) -> Result<Value, LabeledError> {
+        keep_alive(engine)?;
+        let key: String = call.req(0)?;
+        let value = resolve_value_input(call, input)?;
+
+        let mut store = plugin
+            .store()
+            .lock()
+            .map_err(|_| poison_error(call.head))?;
+        Ok(store.get_or_put(key, value))
     }
 }
 
@@ -298,6 +372,50 @@ impl SimplePluginCommand for Clear {
     }
 }
 
+impl SimplePluginCommand for Incr {
+    type Plugin = UMokaPlugin;
+
+    fn name(&self) -> &str {
+        "umoka incr"
+    }
+
+    fn description(&self) -> &str {
+        "Atomically increment an integer value by key."
+    }
+
+    fn signature(&self) -> Signature {
+        Signature::build(SimplePluginCommand::name(self))
+            .required("key", SyntaxShape::String, "The cache key.")
+            .optional("delta", SyntaxShape::Int, "Amount to add. Defaults to 1.")
+            .input_output_type(Type::Nothing, Type::Int)
+            .category(Category::Experimental)
+    }
+
+    fn run(
+        &self,
+        plugin: &UMokaPlugin,
+        engine: &EngineInterface,
+        call: &EvaluatedCall,
+        _input: &Value,
+    ) -> Result<Value, LabeledError> {
+        keep_alive(engine)?;
+        let key: String = call.req(0)?;
+        let delta = call.opt::<i64>(1)?.unwrap_or(1);
+
+        let mut store = plugin
+            .store()
+            .lock()
+            .map_err(|_| poison_error(call.head))?;
+        let next = store.incr(key, delta, call.head).map_err(|message| {
+            LabeledError::new(message)
+                .with_help("Use `umoka incr` only on integer values or on missing keys.")
+                .with_label("integer value required here", call.head)
+        })?;
+
+        Ok(Value::int(next, call.head))
+    }
+}
+
 impl SimplePluginCommand for Stats {
     type Plugin = UMokaPlugin;
 
@@ -333,6 +451,22 @@ impl SimplePluginCommand for Stats {
 
 fn is_nothing(value: &Value) -> bool {
     matches!(value, Value::Nothing { .. })
+}
+
+fn resolve_value_input(
+    call: &EvaluatedCall,
+    input: &Value,
+) -> Result<Value, LabeledError> {
+    match (is_nothing(input), call.opt::<Value>(1)?) {
+        (false, None) => Ok(input.clone()),
+        (true, Some(value)) => Ok(value),
+        (true, None) => Err(LabeledError::new("Missing value")
+            .with_help("Pass a value as pipeline input or as the second positional argument.")
+            .with_label("value required here", call.head)),
+        (false, Some(_)) => Err(LabeledError::new("Ambiguous value input")
+            .with_help("Use either pipeline input or a positional value, not both.")
+            .with_label("conflicting inputs", call.head)),
+    }
 }
 
 fn poison_error(span: Span) -> LabeledError {
