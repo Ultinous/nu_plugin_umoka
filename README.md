@@ -1,5 +1,8 @@
 # nu_plugin_umoka
 
+> [!WARNING]
+> This project was written with AI assistance. Review the code carefully before using it in production or security-sensitive environments.
+
 A small Nushell plugin that exposes a bounded in-memory `key -> value` store.
 
 Current command surface:
