@@ -58,11 +58,11 @@ impl Store {
 
     pub fn stats(&mut self, span: Span) -> Value {
         let mut record = Record::new();
-        record.push("entry_count", Value::int(self.cache.entry_count() as i64, span));
         record.push(
-            "max_capacity",
-            Value::int(self.max_capacity as i64, span),
+            "entry_count",
+            Value::int(self.cache.entry_count() as i64, span),
         );
+        record.push("max_capacity", Value::int(self.max_capacity as i64, span));
 
         Value::record(record, span)
     }
@@ -87,7 +87,10 @@ mod tests {
     fn put_get_take_roundtrip() {
         let span = Span::test_data();
         let mut store = Store::new(16);
-        let value = Value::record(Record::from_iter([("name", Value::string("alice", span))]), span);
+        let value = Value::record(
+            Record::from_iter([("name".into(), Value::string("alice", span))]),
+            span,
+        );
 
         store.put("k".into(), value.clone());
 
@@ -103,7 +106,10 @@ mod tests {
         let first = Value::string("first", span);
         let second = Value::string("second", span);
 
-        assert_eq!(store.put_if_absent("k".into(), first.clone()), (true, first.clone()));
+        assert_eq!(
+            store.put_if_absent("k".into(), first.clone()),
+            (true, first.clone())
+        );
         assert_eq!(store.put_if_absent("k".into(), second), (false, first));
     }
 
@@ -134,6 +140,9 @@ mod tests {
 
         store.put("k".into(), Value::string("nope", span));
 
-        assert_eq!(store.incr("k".into(), 1, span), Err("Value is not an integer"));
+        assert_eq!(
+            store.incr("k".into(), 1, span),
+            Err("Value is not an integer")
+        );
     }
 }
