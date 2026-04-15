@@ -1,9 +1,7 @@
-use nu_plugin::{
-    EngineInterface, EvaluatedCall, PluginCommand, SimplePluginCommand,
-};
+use nu_plugin::{EngineInterface, EvaluatedCall, PluginCommand, SimplePluginCommand};
 use nu_protocol::{
-    Category, Example, LabeledError, PipelineData, Record, Signature, Span,
-    SyntaxShape, Type, Value,
+    Category, Example, LabeledError, PipelineData, Record, Signature, Span, SyntaxShape, Type,
+    Value,
 };
 
 use crate::UMokaPlugin;
@@ -105,10 +103,7 @@ impl SimplePluginCommand for Put {
 
         let value = resolve_value_input(call, input)?;
 
-        let mut store = plugin
-            .store()
-            .lock()
-            .map_err(|_| poison_error(call.head))?;
+        let mut store = plugin.store().lock().map_err(|_| poison_error(call.head))?;
         store.put(key, value.clone());
         Ok(value)
     }
@@ -129,7 +124,10 @@ impl SimplePluginCommand for PutIfAbsent {
         Signature::build(SimplePluginCommand::name(self))
             .required("key", SyntaxShape::String, "The cache key.")
             .optional("value", SyntaxShape::Any, "Value to store if missing.")
-            .input_output_types(vec![(Type::Any, Type::Record(vec![].into())), (Type::Nothing, Type::Record(vec![].into()))])
+            .input_output_types(vec![
+                (Type::Any, Type::Record(vec![].into())),
+                (Type::Nothing, Type::Record(vec![].into())),
+            ])
             .category(Category::Experimental)
     }
 
@@ -144,16 +142,13 @@ impl SimplePluginCommand for PutIfAbsent {
         let key: String = call.req(0)?;
         let value = resolve_value_input(call, input)?;
 
-        let mut store = plugin
-            .store()
-            .lock()
-            .map_err(|_| poison_error(call.head))?;
+        let mut store = plugin.store().lock().map_err(|_| poison_error(call.head))?;
         let (inserted, stored_value) = store.put_if_absent(key, value);
 
         Ok(Value::record(
             Record::from_iter([
-                ("inserted", Value::bool(inserted, call.head)),
-                ("value", stored_value),
+                ("inserted".into(), Value::bool(inserted, call.head)),
+                ("value".into(), stored_value),
             ]),
             call.head,
         ))
@@ -187,10 +182,7 @@ impl SimplePluginCommand for Get {
     ) -> Result<Value, LabeledError> {
         keep_alive(engine)?;
         let key: String = call.req(0)?;
-        let mut store = plugin
-            .store()
-            .lock()
-            .map_err(|_| poison_error(call.head))?;
+        let mut store = plugin.store().lock().map_err(|_| poison_error(call.head))?;
         Ok(store.get(&key).unwrap_or_else(|| Value::nothing(call.head)))
     }
 }
@@ -225,10 +217,7 @@ impl SimplePluginCommand for GetOrPut {
         let key: String = call.req(0)?;
         let value = resolve_value_input(call, input)?;
 
-        let mut store = plugin
-            .store()
-            .lock()
-            .map_err(|_| poison_error(call.head))?;
+        let mut store = plugin.store().lock().map_err(|_| poison_error(call.head))?;
         Ok(store.get_or_put(key, value))
     }
 }
@@ -260,11 +249,10 @@ impl SimplePluginCommand for Take {
     ) -> Result<Value, LabeledError> {
         keep_alive(engine)?;
         let key: String = call.req(0)?;
-        let mut store = plugin
-            .store()
-            .lock()
-            .map_err(|_| poison_error(call.head))?;
-        Ok(store.take(&key).unwrap_or_else(|| Value::nothing(call.head)))
+        let mut store = plugin.store().lock().map_err(|_| poison_error(call.head))?;
+        Ok(store
+            .take(&key)
+            .unwrap_or_else(|| Value::nothing(call.head)))
     }
 }
 
@@ -295,10 +283,7 @@ impl SimplePluginCommand for Delete {
     ) -> Result<Value, LabeledError> {
         keep_alive(engine)?;
         let key: String = call.req(0)?;
-        let mut store = plugin
-            .store()
-            .lock()
-            .map_err(|_| poison_error(call.head))?;
+        let mut store = plugin.store().lock().map_err(|_| poison_error(call.head))?;
         Ok(Value::bool(store.delete(&key), call.head))
     }
 }
@@ -330,10 +315,7 @@ impl SimplePluginCommand for Has {
     ) -> Result<Value, LabeledError> {
         keep_alive(engine)?;
         let key: String = call.req(0)?;
-        let mut store = plugin
-            .store()
-            .lock()
-            .map_err(|_| poison_error(call.head))?;
+        let mut store = plugin.store().lock().map_err(|_| poison_error(call.head))?;
         Ok(Value::bool(store.has(&key), call.head))
     }
 }
@@ -363,10 +345,7 @@ impl SimplePluginCommand for Clear {
         _input: &Value,
     ) -> Result<Value, LabeledError> {
         keep_alive(engine)?;
-        let mut store = plugin
-            .store()
-            .lock()
-            .map_err(|_| poison_error(call.head))?;
+        let mut store = plugin.store().lock().map_err(|_| poison_error(call.head))?;
         store.clear();
         Ok(Value::bool(true, call.head))
     }
@@ -402,10 +381,7 @@ impl SimplePluginCommand for Incr {
         let key: String = call.req(0)?;
         let delta = call.opt::<i64>(1)?.unwrap_or(1);
 
-        let mut store = plugin
-            .store()
-            .lock()
-            .map_err(|_| poison_error(call.head))?;
+        let mut store = plugin.store().lock().map_err(|_| poison_error(call.head))?;
         let next = store.incr(key, delta, call.head).map_err(|message| {
             LabeledError::new(message)
                 .with_help("Use `umoka incr` only on integer values or on missing keys.")
@@ -441,10 +417,7 @@ impl SimplePluginCommand for Stats {
         _input: &Value,
     ) -> Result<Value, LabeledError> {
         keep_alive(engine)?;
-        let mut store = plugin
-            .store()
-            .lock()
-            .map_err(|_| poison_error(call.head))?;
+        let mut store = plugin.store().lock().map_err(|_| poison_error(call.head))?;
         Ok(store.stats(call.head))
     }
 }
@@ -453,10 +426,7 @@ fn is_nothing(value: &Value) -> bool {
     matches!(value, Value::Nothing { .. })
 }
 
-fn resolve_value_input(
-    call: &EvaluatedCall,
-    input: &Value,
-) -> Result<Value, LabeledError> {
+fn resolve_value_input(call: &EvaluatedCall, input: &Value) -> Result<Value, LabeledError> {
     match (is_nothing(input), call.opt::<Value>(1)?) {
         (false, None) => Ok(input.clone()),
         (true, Some(value)) => Ok(value),
@@ -470,8 +440,7 @@ fn resolve_value_input(
 }
 
 fn poison_error(span: Span) -> LabeledError {
-    LabeledError::new("UMoka store lock poisoned")
-        .with_label("store unavailable", span)
+    LabeledError::new("UMoka store lock poisoned").with_label("store unavailable", span)
 }
 
 fn keep_alive(engine: &EngineInterface) -> Result<(), LabeledError> {

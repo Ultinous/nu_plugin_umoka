@@ -2,7 +2,9 @@ use std::sync::{Arc, Mutex};
 
 use nu_plugin::{Plugin, PluginCommand};
 
-use crate::commands::{Clear, Delete, Get, Has, Put, Stats, Take, UMoka};
+use crate::commands::{
+    Clear, Delete, Get, GetOrPut, Has, Incr, Put, PutIfAbsent, Stats, Take, UMoka,
+};
 use crate::store::Store;
 
 const DEFAULT_MAX_CAPACITY: u64 = 1024;
@@ -32,11 +34,14 @@ impl Plugin for UMokaPlugin {
         vec![
             Box::new(UMoka),
             Box::new(Put),
+            Box::new(PutIfAbsent),
             Box::new(Get),
+            Box::new(GetOrPut),
             Box::new(Take),
             Box::new(Delete),
             Box::new(Has),
             Box::new(Clear),
+            Box::new(Incr),
             Box::new(Stats),
         ]
     }

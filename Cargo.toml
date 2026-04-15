@@ -1,6 +1,6 @@
 [package]
 name = "nu_plugin_umoka"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 authors = ["Codex"]
 description = "A Nushell plugin for bounded in-memory ephemeral record storage."
