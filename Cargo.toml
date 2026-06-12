@@ -1,6 +1,6 @@
 [package]
 name = "nu_plugin_umoka"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 authors = ["Codex"]
 description = "A Nushell plugin for bounded in-memory ephemeral record storage."
@@ -14,6 +14,6 @@ bench = false
 bench = false
 
 [dependencies]
-micro-moka = "0.1.22"
+micro-moka = "1.0.0"
 nu-plugin = "0.112.1"
 nu-protocol = "0.112.1"
